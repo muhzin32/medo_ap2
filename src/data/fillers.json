@@ -1,0 +1,27 @@
+{
+    "en-IN": {
+        "sad": [
+            "hmm...",
+            "I see...",
+            "okay...",
+            "right...",
+            "I understand..."
+        ],
+        "calm": [
+            "hmm",
+            "let me think",
+            "alright",
+            "okay",
+            "I see",
+            "right"
+        ],
+        "neutral": [
+            "um",
+            "hmm",
+            "let me see",
+            "okay",
+            "alright",
+            "well"
+        ]
+    }
+}
