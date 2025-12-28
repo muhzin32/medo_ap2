@@ -472,7 +472,8 @@ app.post('/api/extract-facts', async (req, res) => {
 });
 
 // 9. CATCH-ALL ROUTE (For React Router)
-app.get('/:pathMatch(.*)', (req, res) => {
+// 9. CATCH-ALL ROUTE (For React Router) - Express 5 compatible
+app.get(/(.*)/, (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
