@@ -302,7 +302,7 @@ app.post('/api/context', async (req, res) => {
 // 5. NLP Proxy (Process Text) - Existing
 app.post('/api/process-text', async (req, res) => {
     try {
-        const pythonServiceUrl = 'http://127.0.0.1:5001/process';
+        const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'https://meddollina-ap1-1.onrender.com/process';
         const response = await fetch(pythonServiceUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
