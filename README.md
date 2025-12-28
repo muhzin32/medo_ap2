@@ -79,7 +79,7 @@ npm start
 
 This command uses `concurrently` to run:
 - Frontend: `http://localhost:5173`
-- Backend: `http://localhost:3001`
+- Backend: `https://medo-ap2.onrender.com`
 - Python Service: Internal port (usually 5001)
 
 ## Development

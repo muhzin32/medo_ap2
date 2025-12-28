@@ -9,7 +9,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'https://medo-ap2.onrender.com', // Production Backend
         changeOrigin: true,
       },
     },

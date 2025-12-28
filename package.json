@@ -31,7 +31,8 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "start": "concurrently \"npm run backend\" \"python backend/app.py\"",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\" \"python backend/app.py\"",
     "backend": "node backend/server.js",
     "frontend": "vite",
     "build": "vite build",

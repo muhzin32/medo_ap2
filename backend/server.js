@@ -19,6 +19,10 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// 🚀 SERVE STATIC FILES (Production)
+const frontendPath = path.join(__dirname, '../dist');
+app.use(express.static(frontendPath));
+
 // MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -464,6 +468,11 @@ app.post('/api/extract-facts', async (req, res) => {
         console.error('[Extract-Facts] Error:', err);
         res.status(500).json({ error: 'Failed to extract facts', facts: [] });
     }
+});
+
+// 9. CATCH-ALL ROUTE (For React Router)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.listen(PORT, () => {

@@ -1,5 +1,5 @@
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'https://medo-ap2.onrender.com';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
