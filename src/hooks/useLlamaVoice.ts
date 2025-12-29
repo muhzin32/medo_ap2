@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { HfInference } from '@huggingface/inference';
-import { TTSQueue, type TurnLanguage as TTSQueueTurnLanguage } from '../services/TTSQueue';
+import { TTSQueue } from '../services/TTSQueue';
 import fillersConfig from '../data/fillers.json';
 
 // Configuration
@@ -40,7 +40,7 @@ let hf: HfInference | null = null;
 
 // State Machine Types
 type ConversationState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING' | 'INTERRUPTED';
-type TurnLanguage = 'en-IN';
+
 
 // 1️⃣ SINGLE FIXED VOICE (GLOBAL)
 const FIXED_TTS_VOICE = "en-IN-NeerjaNeural"; // Changed to English Voice
@@ -120,21 +120,15 @@ export const useLlamaVoice = () => {
     // Store credentials for re-initialization
     const credentialsRef = useRef<{ key: string; region: string } | null>(null);
 
-    // 🌍 STRICT TURN-BASED LANGUAGE SYSTEM
-    // Always English.
-    const lastStableLangRef = useRef<TurnLanguage>('en-IN');
-    const activeTurnLangRef = useRef<TurnLanguage>('en-IN');
 
-    // 🔒 FIX #1: TURN LANGUAGE LOCK (Still useful for preventing mid-turn confusion, though language is constant)
-    const turnLanguageLockedRef = useRef<boolean>(false);
+
+
 
     // 💾 PERSISTENCE STATE
     const sessionIdRef = useRef<string | null>(null);
     const hasLoadedHistoryRef = useRef(false);
 
-    // CONFIDENCE-BASED SWITCHING THRESHOLDS (no more time-based locks)
-    const MIN_SWITCH_CONFIDENCE = 0.75; // New language must have this confidence to switch
-    const MAX_CURRENT_CONFIDENCE = 0.55; // Current language must drop below this to allow switch
+
     const MIN_UTTERANCE_DURATION_MS = 400; // 
     // LLM timing for filler injection
     const llmRequestTimeRef = useRef<number>(0);
@@ -190,9 +184,7 @@ export const useLlamaVoice = () => {
                 // The microphone STAYS ACTIVE, but responses are gated by wake word detection.
                 if (isActiveRef.current && recognizerRef.current) {
                     try {
-                        // Update stable language after successful turn completion
-                        lastStableLangRef.current = activeTurnLangRef.current;
-                        console.log(`[Language] Stable language updated → ${activeTurnLangRef.current}`);
+
 
                         // ⚡ FIX: TRANSITION TO LISTENING (Active Window)
                         // User Request: "wait for few seconds after every tts"
@@ -210,15 +202,13 @@ export const useLlamaVoice = () => {
                             }
                         }, POST_TTS_WINDOW_MS);
 
-                        // 🔓 UNLOCK LANGUAGE FOR NEXT TURN
-                        turnLanguageLockedRef.current = false;
-                        console.log('[TurnLock] Unlocked language for next turn');
+
                     } catch (err) {
                         console.error('[Audio Gate] State update error:', err);
                     }
                 } else if (!isActiveRef.current) {
                     transitionState('IDLE', 'Session ended');
-                    turnLanguageLockedRef.current = false;
+
                 }
             },
             onItemStart: (item, index, total) => {
@@ -227,8 +217,7 @@ export const useLlamaVoice = () => {
             onInterrupt: () => {
                 console.log('[TTSQueue] Queue was interrupted');
                 // Unlock language on interruption
-                turnLanguageLockedRef.current = false;
-                console.log('[TurnLock] Unlocked language (interrupted)');
+
             },
             onError: (error, item) => {
                 console.error('[TTSQueue] Error processing item:', error, item);
@@ -303,17 +292,12 @@ RULES:
         console.log(`[Emotion] ${mood} → valence: ${emotionStateRef.current.valence.toFixed(2)}, arousal: ${emotionStateRef.current.arousal.toFixed(2)}`);
     };
 
-    // ---------------- LANGUAGE STABILITY HELPERS ----------------
-    // No language enforcement needed for strict English
-    const enforceLanguage = (text: string, lang: string) => {
-        return text;
-    };
+
 
     // 🗣️ CONTEXTUAL FILLER SELECTION (Emotion-Aware)
     // Prevents robotic repetition by selecting fillers based on emotional state
     // 🗣️ CONTEXTUAL FILLER SELECTION (Emotion-Aware)
-    // ⚡ FIX: Loaded from JSON configuration
-    const fillersByLang: Record<string, { sad: string[]; calm: string[]; neutral: string[] }> = fillersConfig;
+
 
     // Track last used filler to prevent immediate repetition
     const lastFillerUsedRef = useRef<string>('');
@@ -327,10 +311,9 @@ RULES:
         return /[.!?…]\s*$/.test(buffer.trim());
     };
 
-    const getContextualFiller = (lang: string): string | null => {
+    const getContextualFiller = (): string | null => {
         const emotion = emotionStateRef.current;
-
-        const langFillers = fillersByLang[lang] || fillersByLang['en-IN'];
+        const langFillers = fillersConfig['en-IN'];
 
         // Select filler category based on emotion state
         let category: 'sad' | 'calm' | 'neutral';
@@ -531,7 +514,7 @@ RULES:
 
         // 4. RESET ALL FLAGS
         stopBargeInMonitoring();
-        turnLanguageLockedRef.current = false;
+
         ttsInProgressRef.current = false;
 
         // 5. TRANSITION TO IDLE (Listen-but-Ignore)
@@ -620,13 +603,13 @@ RULES:
             if (conversationStateRef.current === 'LISTENING') {
                 const SILENCE_THRESHOLD = 0.05;
                 const END_OF_UTTERANCE_MS = 600;
-
+    
                 if (rms > SILENCE_THRESHOLD) {
                     lastSpeechTimeRef.current = Date.now();
                     silenceDurationRef.current = 0;
                 } else if (lastSpeechTimeRef.current > 0) {
                     silenceDurationRef.current = Date.now() - lastSpeechTimeRef.current;
-
+    
                     // Force recognition stop after 600ms silence
                     if (silenceDurationRef.current > END_OF_UTTERANCE_MS && recognizerRef.current) {
                         console.log('[End-of-Utterance] Forcing recognition stop after silence');
@@ -915,7 +898,7 @@ RULES:
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             text: inputText,
-                            language: lang, // 🌍 Send context language for script correction
+                            language: 'en-IN', // 🌍 Send context language for script correction
                             config: { action: 'remove' }
                         })
                     });
@@ -988,12 +971,7 @@ RULES:
                         return;
                     }
 
-                    // 🔒 LOCK CHECK
-                    if (turnLanguageLockedRef.current && !isBargeIn) {
-                        console.warn('[TurnLock] Language locked, ignoring new utterance during active turn');
-                        logTranscriptInBackground(sessionIdRef.current, text, undefined, 'ignored_locked');
-                        return;
-                    }
+
 
                     // 📝 LOGGING: ONLY VALID SPEECH (Active State)
                     // Fix: Minimum semantic length threshold (>= 3 meaningful tokens) unless it's a command
@@ -1011,12 +989,14 @@ RULES:
                         logTranscriptInBackground(sessionIdRef.current, originalText);
                     }
 
+
                     // 🧠 NLP PROCESSING
                     let detectedFillers: string[] = [];
-                    const provisionalLang = lastStableLangRef.current;
+                    // const provisionalLang = lastStableLangRef.current; // Removed
 
-                    console.log(`[NLP] Processing input (${provisionalLang}): "${originalText}"...`);
-                    const nlpResult = await processSpeechWithNLP(originalText, provisionalLang);
+                    console.log(`[NLP] Processing input: "${originalText}"...`);
+                    // Use 'en-IN' directly
+                    const nlpResult = await processSpeechWithNLP(originalText, 'en-IN');
                     text = nlpResult.text;
                     detectedFillers = nlpResult.fillers;
 
@@ -1027,11 +1007,12 @@ RULES:
                     if (!text.trim()) return;
 
                     // ... (Proceed to LLM)
-                    const turnLanguage = 'en-IN';
+                    // const turnLanguage = 'en-IN'; // Removed
 
                     try {
-                        activeTurnLangRef.current = turnLanguage;
-                        turnLanguageLockedRef.current = true;
+                        // activeTurnLangRef.current = turnLanguage; // Removed
+
+
 
                         if (!isBargeIn) {
                             transitionState('THINKING', 'Processing user input');
@@ -1054,12 +1035,12 @@ RULES:
                             }).catch(e => console.warn('Save error:', e));
                         }
 
-                        await processResponse(text, turnLanguage as TurnLanguage, audioCtx, isBargeIn);
+                        await processResponse(text, audioCtx, isBargeIn);
 
                     } catch (langErr) {
                         console.warn('Language detection flow failed:', langErr);
-                        turnLanguageLockedRef.current = true;
-                        await processResponse(text, 'en-IN', getAudioContext(), isBargeIn);
+
+                        await processResponse(text, getAudioContext(), isBargeIn);
                     }
                 }
             };
@@ -1207,7 +1188,7 @@ RULES:
             const immediateSynthesizer = new SpeechSDK.SpeechSynthesizer(immediateConfig, audioConfig);
 
             // Use SAFE SSML for immediate response too
-            const ssml = buildSSML(text, 'neutral', 'en-IN');
+            const ssml = buildSSML(text, 'neutral');
 
             return new Promise<void>((resolve) => {
                 immediateSynthesizer.speakSsmlAsync(
@@ -1252,7 +1233,7 @@ RULES:
     };
 
     // ---------------- LLM PROCESSING (STRICT TURN LANGUAGE) ----------------
-    const processResponse = async (userText: string, turnLanguage: TurnLanguage, audioCtx?: UserAudioContext, isBargeIn: boolean = false) => {
+    const processResponse = async (userText: string, audioCtx?: UserAudioContext, isBargeIn: boolean = false) => {
 
         // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
         // We now rely on the conversation history and LLM awareness for names.
@@ -1321,8 +1302,7 @@ RULES:
             enrichedUserText = emotionPrefix + userText;
         }
 
-        // 4️⃣ RESOLVE OUTPUT LANGUAGE - REMOVED, Always English
-        const replyLanguage = 'en-IN';
+
 
         // 5️⃣ CONSTRUCT PROMPT WITH FACTS
         const factInjection = factMemory ? `\nKnown user facts:\n${factMemory}\n` : '';
@@ -1334,7 +1314,7 @@ RULES:
             { role: 'user', content: enrichedUserText }
         ];
 
-        console.log(`[FINAL-MEMORY]`, { replyLanguage, facts: factMemory || "None" });
+        console.log(`[FINAL-MEMORY]`, { facts: factMemory || "None" });
 
         let fullBuffer = '';
         let tokenBuffer = '';
@@ -1369,9 +1349,9 @@ RULES:
                         if (currentTurnIdRef.current !== myTurnId) return;
 
                         console.log('[Filler] Injecting');
-                        const filler = getContextualFiller(turnLanguage);
+                        const filler = getContextualFiller();
                         if (filler) {
-                            queueSpeech(filler, 'neutral', turnLanguage, myTurnId, 'NORMAL');
+                            queueSpeech(filler, 'neutral', myTurnId, 'NORMAL');
                             lastFillerTimeRef.current = Date.now();
                         }
                     }
@@ -1412,14 +1392,14 @@ RULES:
                 if ((hasCompleteSentence || bufferTooLarge) && tokenBuffer.trim().length > 0) {
                     const toSpeak = tokenBuffer.trim();
                     console.log(`[Sentence] Queueing (${priority}): "${toSpeak.substring(0, 50)}..."`);
-                    queueSpeech(enforceLanguage(toSpeak, turnLanguage), detectedMood, turnLanguage, myTurnId, priority);
+                    queueSpeech(toSpeak, detectedMood, myTurnId, priority);
                     tokenBuffer = "";
                 }
             }
 
             if (tokenBuffer.trim()) {
                 if (currentTurnIdRef.current === myTurnId) {
-                    queueSpeech(enforceLanguage(tokenBuffer.trim(), turnLanguage), detectedMood, turnLanguage, myTurnId, priority);
+                    queueSpeech(tokenBuffer.trim(), detectedMood, myTurnId, priority);
                 }
             }
 
@@ -1450,7 +1430,7 @@ RULES:
         } catch (e) {
             console.error("LLM Error:", e);
             if (fillerTimeout) clearTimeout(fillerTimeout);
-            turnLanguageLockedRef.current = false;
+
             // Only reset to IDLE if we are not already in another valid state or if this was the active turn
             if (currentTurnIdRef.current === myTurnId) {
                 transitionState('IDLE', 'Error occurred');
@@ -1463,9 +1443,9 @@ RULES:
     // =================================================================================
 
     // ---------------- PHRASE QUEUE (BATCHING) ----------------
-    const queueSpeech = (text: string, mood: string, lang: TurnLanguage, turnId: number, priority: 'IMMEDIATE' | 'NORMAL' = 'NORMAL') => {
+    const queueSpeech = (text: string, mood: string, turnId: number, priority: 'IMMEDIATE' | 'NORMAL' = 'NORMAL') => {
         if (ttsQueueRef.current) {
-            ttsQueueRef.current.enqueue(text, mood, lang, turnId, priority);
+            ttsQueueRef.current.enqueue(text, mood, 'en-IN', turnId, priority);
         } else {
             console.error('[TTS] Queue not initialized');
         }
@@ -1479,13 +1459,13 @@ RULES:
         }
 
         // Use TTSQueue's drain method with our safeSpeak function, passing current turn ID
-        await ttsQueueRef.current.drain(async (text: string, mood: string, lang: TurnLanguage, priority: 'IMMEDIATE' | 'NORMAL') => {
+        await ttsQueueRef.current.drain(async (text: string, mood: string, lang: string, priority: 'IMMEDIATE' | 'NORMAL') => {
             // Check state - Interrupts are handled by TTSQueue returning early, 
             // but we can also check here if we want to be double sure.
             if (conversationStateRef.current === 'INTERRUPTED') {
                 return;
             }
-            await safeSpeak(text, mood, lang, priority);
+            await safeSpeak(text, mood, priority);
         }, currentTurnIdRef.current);
     };
 
@@ -1506,7 +1486,7 @@ RULES:
 
     // ---------------- TEXT TO SPEECH (WITH MUTEX) ----------------
     // 🔥 FIX 1: Hard TTS Mutex wrapper
-    const safeSpeak = async (text: string, mood: string = 'neutral', lang: TurnLanguage, priority: 'NORMAL' | 'IMMEDIATE'): Promise<void> => {
+    const safeSpeak = async (text: string, mood: string = 'neutral', priority: 'NORMAL' | 'IMMEDIATE'): Promise<void> => {
         // [FIX] Auto-recover state: If we are IDLE but receive an IMMEDIATE barge-in 
         // or a queued response, force state to SPEAKING to prevent the block.
         // We check queue length via the ref if possible, or just trust priority.
@@ -1532,14 +1512,14 @@ RULES:
         ttsInProgressRef.current = true;
 
         try {
-            await speak(text, mood, lang);
+            await speak(text, mood);
         } finally {
             ttsInProgressRef.current = false;
         }
     };
 
     // ✅ FIXED: DYNAMIC MIXED-LANG SSML
-    const buildSSML = (text: string, mood: string, lang: TurnLanguage = 'en-IN') => {
+    const buildSSML = (text: string, mood: string) => {
         const voice = FIXED_TTS_VOICE; // 'hi-IN-SwaraNeural' is multilingual-capable
 
         // DYNAMICALY DETECT OUTPUT SCRIPT TO SET xml:lang
@@ -1548,15 +1528,8 @@ RULES:
         // Therefore, if we detect significant Roman text but the intent is likely Hindi/Hinglish (lang='hi-IN'),
         // we keep xml:lang='hi-IN'. 
 
-        // However, if the text is PURE English, we might want 'en-IN' for better accent?
-        // Actually, Swara's "English" is Indian Accent English. 'hi-IN' tag usually covers both well for her.
-        // But for safety, let's respect the LLM's "Language Mode" if it's strictly one or the other.
-
-        // Simple Heuristic: If the turn was locked to 'hi-IN' (meaning the user likely spoke Hindi/Hinglish),
-        // we use 'hi-IN' which allows Swara to read Roman text as Hinglish.
-        // If the turn was 'en-IN', we use 'en-IN'.
-
-        let targetXmlLang = lang;
+        // However, we are now STRICTLY English.
+        const targetXmlLang = 'en-IN';
 
         // Map internal emotion state to prosody (Humanized ranges)
         const emotion = emotionStateRef.current;
@@ -1583,7 +1556,7 @@ RULES:
 </speak>`;
     };
 
-    const speak = async (text: string, mood: string = 'neutral', lang: TurnLanguage = 'en-IN') => {
+    const speak = async (text: string, mood: string = 'neutral') => {
         return new Promise<void>(async (resolve, reject) => {
             if (!text || !synthesizerRef.current) { resolve(); return; }
 
@@ -1600,7 +1573,7 @@ RULES:
                 transitionState('SPEAKING', 'Speaking response');
             }
 
-            const ssml = buildSSML(text, mood, lang);
+            const ssml = buildSSML(text, mood);
 
             synthesizerRef.current.speakSsmlAsync(
                 ssml,
