@@ -933,130 +933,130 @@ RULES:
 
                     try {
 
-                    // 🛡️ FIX 4: CONFIDENCE CHECK
-                    let confidence = 1.0;
-                    try {
-                        const json = e.result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult);
-                        const parsed = JSON.parse(json);
-                        if (parsed.NBest && parsed.NBest.length > 0) {
-                            confidence = parsed.NBest[0].Confidence;
-                        }
-                    } catch (err) { /* ignore json parse error */ }
+                        // 🛡️ FIX 4: CONFIDENCE CHECK
+                        let confidence = 1.0;
+                        try {
+                            const json = e.result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult);
+                            const parsed = JSON.parse(json);
+                            if (parsed.NBest && parsed.NBest.length > 0) {
+                                confidence = parsed.NBest[0].Confidence;
+                            }
+                        } catch (err) { /* ignore json parse error */ }
 
-                    // Only check confidence if we have a valid value (Azure returns 0-1)
-                    if (confidence < 0.55) {
-                        console.warn(`[Confidence] Low (${confidence.toFixed(2)}) for "${text}". Logging as noise.`);
-                        logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
-                        return;
-                    }
-
-                    // 1️⃣ IDLE STATE GATE (Wake Word)
-                    if (conversationStateRef.current === 'IDLE') {
-                        if (WAKE_TRS.test(text)) {
-                            console.log(`[Wake] Detected: "${text}" -> Resetting Session...`);
-                            logTranscriptInBackground(sessionIdRef.current, text, undefined, 'wake_word');
-                            // ⚡ FIX: Call new reset sequence (Discard buffer, start fresh)
-                            await handleWakeWordSequence(recognizer);
-                            return;
-                        } else {
-                            // ⚡ FIX 2: LOG AS NOISE IN IDLE
+                        // Only check confidence if we have a valid value (Azure returns 0-1)
+                        if (confidence < 0.55) {
+                            console.warn(`[Confidence] Low (${confidence.toFixed(2)}) for "${text}". Logging as noise.`);
                             logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
                             return;
                         }
-                    }
 
-                    // 2️⃣ GLOBAL EXIT CHECK
-                    if (EXIT_TRS.test(text)) {
-                        console.log(`[Exit] Detected: "${text}" -> Atom Bomb Stop!`);
-                        cancelTurn();
-                        logTranscriptInBackground(sessionIdRef.current, text, undefined, 'command');
-                        await speakImmediateResponse("Goodbye.");
-                        return;
-                    }
+                        // 1️⃣ IDLE STATE GATE (Wake Word)
+                        if (conversationStateRef.current === 'IDLE') {
+                            if (WAKE_TRS.test(text)) {
+                                console.log(`[Wake] Detected: "${text}" -> Resetting Session...`);
+                                logTranscriptInBackground(sessionIdRef.current, text, undefined, 'wake_word');
+                                // ⚡ FIX: Call new reset sequence (Discard buffer, start fresh)
+                                await handleWakeWordSequence(recognizer);
+                                return;
+                            } else {
+                                // ⚡ FIX 2: LOG AS NOISE IN IDLE
+                                logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
+                                return;
+                            }
+                        }
 
-                    // Detect Barge-In State
-                    const isBargeIn = (conversationStateRef.current === 'SPEAKING' || conversationStateRef.current === 'THINKING');
-                    const strategy = determineInterruptionStrategy(text);
+                        // 2️⃣ GLOBAL EXIT CHECK
+                        if (EXIT_TRS.test(text)) {
+                            console.log(`[Exit] Detected: "${text}" -> Atom Bomb Stop!`);
+                            cancelTurn();
+                            logTranscriptInBackground(sessionIdRef.current, text, undefined, 'command');
+                            await speakImmediateResponse("Goodbye.");
+                            return;
+                        }
 
-                    // 2.5️⃣ GLOBAL IMMEDIATE STOP
-                    if (strategy === 'IMMEDIATE') {
-                        console.log(`[Global Stop] Detected: "${text}" -> Immediate Halt!`);
-                        logTranscriptInBackground(sessionIdRef.current, text, undefined, 'command');
-                        await handleImmediateInterruption(text);
-                        return;
-                    }
+                        // Detect Barge-In State
+                        const isBargeIn = (conversationStateRef.current === 'SPEAKING' || conversationStateRef.current === 'THINKING');
+                        const strategy = determineInterruptionStrategy(text);
 
-
-
-                    // 📝 LOGGING: ONLY VALID SPEECH (Active State)
-                    // Fix: Minimum semantic length threshold (>= 3 meaningful tokens) unless it's a command
-                    const tokenCount = text.split(/\s+/).length;
-                    const isCommand = INTERRUPT_TRS.test(text) || EXIT_TRS.test(text);
-
-                    if (tokenCount < 3 && !isCommand) {
-                        console.log(`[Transcript] Skipped short utterance: "${text}"`);
-                        logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
-                        // Don't log, but maybe still process if it's "Yes" or "No"?
-                        // Context: "Do NOT store profanity-only or filler-only utterances"
-                        // But we still want to Process it?
-                        // If it's "Okay" or "Yes", we probably want to process it if we asked a question.
-                    } else {
-                        logTranscriptInBackground(sessionIdRef.current, originalText);
-                    }
-
-
-                    // 🧠 NLP PROCESSING
-                    let detectedFillers: string[] = [];
-                    // const provisionalLang = lastStableLangRef.current; // Removed
-
-                    console.log(`[NLP] Processing input: "${originalText}"...`);
-                    // Use 'en-IN' directly
-                    const nlpResult = await processSpeechWithNLP(originalText, 'en-IN');
-                    text = nlpResult.text;
-                    detectedFillers = nlpResult.fillers;
-
-                    if (detectedFillers.length > 0) {
-                        console.log(`[NLP] Removed fillers: ${detectedFillers.join(', ')} | Clean: "${text}"`);
-                    }
-
-                    if (!text.trim()) return;
-
-                    // ... (Proceed to LLM)
-                    // const turnLanguage = 'en-IN'; // Removed
-
-                    try {
-                        // activeTurnLangRef.current = turnLanguage; // Removed
+                        // 2.5️⃣ GLOBAL IMMEDIATE STOP
+                        if (strategy === 'IMMEDIATE') {
+                            console.log(`[Global Stop] Detected: "${text}" -> Immediate Halt!`);
+                            logTranscriptInBackground(sessionIdRef.current, text, undefined, 'command');
+                            await handleImmediateInterruption(text);
+                            return;
+                        }
 
 
 
-                        if (!isBargeIn) {
-                            transitionState('THINKING', 'Processing user input');
+                        // 📝 LOGGING: ONLY VALID SPEECH (Active State)
+                        // Fix: Minimum semantic length threshold (>= 3 meaningful tokens) unless it's a command
+                        const tokenCount = text.split(/\s+/).length;
+                        const isCommand = INTERRUPT_TRS.test(text) || EXIT_TRS.test(text);
+
+                        if (tokenCount < 3 && !isCommand) {
+                            console.log(`[Transcript] Skipped short utterance: "${text}"`);
+                            logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
+                            // Don't log, but maybe still process if it's "Yes" or "No"?
+                            // Context: "Do NOT store profanity-only or filler-only utterances"
+                            // But we still want to Process it?
+                            // If it's "Okay" or "Yes", we probably want to process it if we asked a question.
                         } else {
-                            console.log('[Barge-in] Background processing started');
+                            logTranscriptInBackground(sessionIdRef.current, originalText);
                         }
 
-                        const audioCtx = getAudioContext();
-                        setMessages(prev => [...prev, { role: 'user', content: text, audioContext: audioCtx }]);
 
-                        if (sessionIdRef.current) {
-                            fetch('/api/message', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    sessionId: sessionIdRef.current,
-                                    role: 'user',
-                                    content: text
-                                })
-                            }).catch(e => console.warn('Save error:', e));
+                        // 🧠 NLP PROCESSING
+                        let detectedFillers: string[] = [];
+                        // const provisionalLang = lastStableLangRef.current; // Removed
+
+                        console.log(`[NLP] Processing input: "${originalText}"...`);
+                        // Use 'en-IN' directly
+                        const nlpResult = await processSpeechWithNLP(originalText, 'en-IN');
+                        text = nlpResult.text;
+                        detectedFillers = nlpResult.fillers;
+
+                        if (detectedFillers.length > 0) {
+                            console.log(`[NLP] Removed fillers: ${detectedFillers.join(', ')} | Clean: "${text}"`);
                         }
 
-                        await processResponse(text, audioCtx, isBargeIn);
+                        if (!text.trim()) return;
 
-                    } catch (langErr) {
-                        console.warn('Language detection flow failed:', langErr);
+                        // ... (Proceed to LLM)
+                        // const turnLanguage = 'en-IN'; // Removed
 
-                        await processResponse(text, getAudioContext(), isBargeIn);
-                    }
+                        try {
+                            // activeTurnLangRef.current = turnLanguage; // Removed
+
+
+
+                            if (!isBargeIn) {
+                                transitionState('THINKING', 'Processing user input');
+                            } else {
+                                console.log('[Barge-in] Background processing started');
+                            }
+
+                            const audioCtx = getAudioContext();
+                            setMessages(prev => [...prev, { role: 'user', content: text, audioContext: audioCtx }]);
+
+                            if (sessionIdRef.current) {
+                                fetch('/api/message', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        sessionId: sessionIdRef.current,
+                                        role: 'user',
+                                        content: text
+                                    })
+                                }).catch(e => console.warn('Save error:', e));
+                            }
+
+                            await processResponse(text, audioCtx, isBargeIn);
+
+                        } catch (langErr) {
+                            console.warn('Language detection flow failed:', langErr);
+
+                            await processResponse(text, getAudioContext(), isBargeIn);
+                        }
                     } finally {
                         // 🆕 RESET PROCESSING GUARD
                         isProcessingRecognitionRef.current = false;
@@ -1177,6 +1177,59 @@ RULES:
         await setupRecognizer(apiKey, apiRegion);
     }, []);
 
+    // ---------------- HELPER FUNCTIONS ----------------
+
+    const escapeXml = (unsafe: string): string => {
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case '\'': return '&apos;';
+                case '"': return '&quot;';
+                default: return c;
+            }
+        });
+    };
+
+    // ✅ FIXED: DYNAMIC MIXED-LANG SSML
+    const buildSSML = (text: string, mood: string) => {
+        const voice = FIXED_TTS_VOICE; // 'hi-IN-SwaraNeural' is multilingual-capable
+
+        // DYNAMICALY DETECT OUTPUT SCRIPT TO SET xml:lang
+        // This is crucial for Swara to pronounce "Hinglish" correctly versus "English".
+        // Swara in 'hi-IN' mode handles Romanized Hindi (Hinglish) much better than 'en-IN' mode.
+        // Therefore, if we detect significant Roman text but the intent is likely Hindi/Hinglish (lang='hi-IN'),
+        // we keep xml:lang='hi-IN'. 
+
+        // However, we are now STRICTLY English.
+        const targetXmlLang = 'en-IN';
+
+        // Map internal emotion state to prosody (Humanized ranges)
+        const emotion = emotionStateRef.current;
+
+        // Pitch: Subtle variations (+/- 5%) are more natural than fixed Hz shifts
+        // Valence -1 (sad) -> -5%, Valence +1 (happy) -> +5%
+        const pitchDelta = Math.round(emotion.valence * 5);
+        const basePitch = `${pitchDelta >= 0 ? '+' : ''}${pitchDelta}%`;
+
+        // Rate: 0.9 (slow/sad) to 1.15 (fast/excited). Default ~1.0
+        // Arousal 0 -> 0.9, Arousal 1 -> 1.15
+        const baseRate = 0.9 + (emotion.arousal * 0.25);
+
+        // Escape XML chars
+        const safeText = escapeXml(text);
+
+        return `
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${targetXmlLang}">
+  <voice name="${voice}">
+    <prosody rate="${baseRate.toFixed(2)}" pitch="${basePitch}">
+      ${safeText}
+    </prosody>
+  </voice>
+</speak>`;
+    };
+
     // ---------------- BARGE-IN STRATEGY ----------------
     // ⚡ FIX: MORE ROBUST STOP COMMANDS (Regex based)
     const determineInterruptionStrategy = (text: string): 'IMMEDIATE' | 'QUEUED' => {
@@ -1251,340 +1304,11 @@ RULES:
         await processInterruptionCommand(text);
     };
 
-    // ---------------- LLM PROCESSING (STRICT TURN LANGUAGE) ----------------
-    const processResponse = async (userText: string, audioCtx?: UserAudioContext, isBargeIn: boolean = false) => {
-        // 🆕 CONCURRENT LLM GUARD
-        if (isProcessingLLMRef.current) {
-            console.log(`[LLM] Skipping concurrent processing: "${userText}"`);
-            return;
-        }
-        isProcessingLLMRef.current = true;
-
-        try {
-            // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
-            // We now rely on the conversation history and LLM awareness for names.
-            // Specific 'fact extraction' calls can be reintroduced as a dedicated NLP step if needed.
-            /* 
-            const nameFact = extractNameFact(userText);
-            if (nameFact && sessionIdRef.current) {
-                // ... (code removed)
-            }
-            */
-
-        // 2️⃣ RETRIEVE SESSION FACTS
-            let factMemory = "";
-            if (sessionIdRef.current) {
-                try {
-                    const fRes = await fetch(`/api/facts?sessionId=${sessionIdRef.current}`);
-                    if (fRes.ok) {
-                        const facts = await fRes.json();
-                        if (Object.keys(facts).length > 0) {
-                            factMemory = Object.entries(facts)
-                                .map(([k, v]) => `${k.replace("_", " ")}: ${v}`)
-                                .join("\n");
-                            console.log(`[Memory] Loaded Facts:\n${factMemory}`);
-                    }
-                }
-            } catch (e) { console.warn('Fact fetch error:', e); }
-        }
-
-        // 3️⃣ RETRIEVE CONTEXT (Async)
-            let retrievedContext = '';
-            if (sessionIdRef.current && !isBargeIn) {
-                try {
-                    const ctxTime = Date.now();
-                    const ctxRes = await fetch('/api/context', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sessionId: sessionIdRef.current, text: userText })
-                    });
-                    if (ctxRes.ok) {
-                        const ctxData = await ctxRes.json();
-                        retrievedContext = ctxData.context || '';
-                    }
-                } catch (e) { console.warn('Context error:', e); }
-        }
-
-        // Initialize HfInference...
-            if (!hf) {
-                const token = localStorage.getItem('hf_token') || HF_TOKEN;
-                if (!token) {
-                    console.error("Hugging Face token missing.");
-                    return;
-                }
-                hf = new HfInference(token);
-        }
-
-        // 🆔 CAPTURE CURRENT TURN ID
-            const myTurnId = currentTurnIdRef.current;
-
-            // Construct conversation history
-            const history = messages.slice(-20);
-
-            // Enrich user message
-            let enrichedUserText = userText;
-        if (audioCtx) {
-                const emotionPrefix = `[User audio: ${audioCtx.emotion}, ${audioCtx.energy} energy, speaking ${audioCtx.speed > 3 ? 'fast' : audioCtx.speed < 2 ? 'slowly' : 'normally'}] `;
-                enrichedUserText = emotionPrefix + userText;
-            }
-
-
-
-            // 5️⃣ CONSTRUCT PROMPT WITH FACTS
-            const factInjection = factMemory ? `\nKnown user facts:\n${factMemory}\n` : '';
-            const combinedContext = `${factInjection}${retrievedContext}`;
-
-        const conversation: Message[] = [
-                { role: 'system', content: getSystemPrompt(combinedContext) },
-                ...history,
-                { role: 'user', content: enrichedUserText }
-            ];
-
-            console.log(`[FINAL-MEMORY]`, { facts: factMemory || "None" });
-
-            let fullBuffer = '';
-        let tokenBuffer = '';
-            let tokenCount = 0;
-            let detectedMood = 'neutral';
-            let emotionLocked = false;
-            const priority = isBargeIn ? 'IMMEDIATE' : 'NORMAL';
-
-            // Track LLM timing
-            llmRequestTimeRef.current = Date.now();
-            hasFirstChunkRef.current = false;
-            let fillerTimeout: NodeJS.Timeout | null = null;
-
-        try {
-                const stream = hf.chatCompletionStream({
-                    model: 'meta-llama/Llama-3.3-70B-Instruct',
-                    messages: conversation as any,
-                    max_tokens: 150,
-                    temperature: 0.7,
-                });
-
-                // Filler logic (Disable for barge-in to be snappy)
-                if (!isBargeIn) {
-                    fillerTimeout = setTimeout(() => {
-                        const timeSinceLastFiller = Date.now() - lastFillerTimeRef.current;
-                        if (timeSinceLastFiller < 4000) return;
-
-                        if (!hasFirstChunkRef.current && conversationStateRef.current === 'THINKING') {
-                            if (Math.random() > 0.35) return;
-
-                            // Check if still valid state
-                            if (currentTurnIdRef.current !== myTurnId) return;
-
-                        console.log('[Filler] Injecting');
-                            const filler = getContextualFiller();
-                            if (filler) {
-                                queueSpeech(filler, 'neutral', myTurnId, 'NORMAL');
-                                lastFillerTimeRef.current = Date.now();
-                            }
-                        }
-                    }, 1200);
-                }
-
-            for await (const chunk of stream) {
-                    if (currentTurnIdRef.current !== myTurnId) {
-                        console.log(`[LLM] Cancelled stale response (Turn ID ${myTurnId})`);
-                        break;
-                    }
-
-                    const content = chunk.choices[0]?.delta?.content || "";
-
-                    if (!hasFirstChunkRef.current) {
-                        hasFirstChunkRef.current = true;
-                        if (fillerTimeout) clearTimeout(fillerTimeout);
-                        console.log(`[LLM] First token: ${Date.now() - llmRequestTimeRef.current}ms`);
-                    }
-
-                    fullBuffer += content;
-                    tokenBuffer += content;
-
-                    if (!emotionLocked && fullBuffer.length < 50 && fullBuffer.includes('[')) {
-                        const match = fullBuffer.match(/^\[(.*?)\]/);
-                    if (match) {
-                            detectedMood = match[1].toLowerCase();
-                            tokenBuffer = tokenBuffer.replace(/^\[(.*?)\]/, '').trim();
-                            updateEmotionFromMood(detectedMood);
-                            emotionLocked = true;
-                        }
-                    }
-
-                    tokenBuffer = tokenBuffer.replace(/\[.*?\]/g, '');
-                    const hasCompleteSentence = isSentenceComplete(tokenBuffer);
-                const bufferTooLarge = tokenBuffer.length > 500;
-
-                    if ((hasCompleteSentence || bufferTooLarge) && tokenBuffer.trim().length > 0) {
-                        const toSpeak = tokenBuffer.trim();
-                        console.log(`[Sentence] Queueing (${priority}): "${toSpeak.substring(0, 50)}..."`);
-                        queueSpeech(toSpeak, detectedMood, myTurnId, priority);
-                        tokenBuffer = "";
-                    }
-                }
-
-            if (tokenBuffer.trim()) {
-                    if (currentTurnIdRef.current === myTurnId) {
-                        queueSpeech(tokenBuffer.trim(), detectedMood, myTurnId, priority);
-                    }
-                }
-
-                const cleanMessage = fullBuffer.replace(/^\[(.*?)\]/, '').trim();
-                setMessages(prev => [...prev, { role: 'assistant', content: cleanMessage, mood: detectedMood }]);
-
-            if (sessionIdRef.current) {
-                    fetch('/api/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            sessionId: sessionIdRef.current,
-                            role: 'assistant',
-                            content: cleanMessage,
-                            mood: detectedMood
-                    })
-                    }).catch(e => console.warn('Save error:', e));
-
-                    // 🧠 EXTRACT FACTS FROM THIS TURN (Background, Non-blocking)
-                    // This enables memory: "My name is X" -> stores user_name: X
-                    if (!isBargeIn) {
-                        extractFactsInBackground(sessionIdRef.current, userText, cleanMessage);
-                    }
-                }
-
-                await drainTTSQueue();
-
-        } catch (e) {
-            console.error("LLM Error:", e);
-            if (fillerTimeout) clearTimeout(fillerTimeout);
-
-            // Only reset to IDLE if we are not already in another valid state or if this was the active turn
-            if (currentTurnIdRef.current === myTurnId) {
-                transitionState('IDLE', 'Error occurred');
-            }
-        } finally {
-            // 🆕 RESET LLM PROCESSING GUARD
-            isProcessingLLMRef.current = false;
-        }
-    };
-
     // =================================================================================
     // 5️⃣ TEXT-TO-SPEECH (SPEAKING BRAIN) & PROSODY
     // =================================================================================
 
-    // ---------------- PHRASE QUEUE (BATCHING) ----------------
-    const queueSpeech = (text: string, mood: string, turnId: number, priority: 'IMMEDIATE' | 'NORMAL' = 'NORMAL') => {
-        if (ttsQueueRef.current) {
-            ttsQueueRef.current.enqueue(text, mood, 'en-IN', turnId, priority);
-        } else {
-            console.error('[TTS] Queue not initialized');
-        }
-    };
-
-    // 🔥 REFACTORED: Drain phrase queue using TTSQueue class
-    const drainTTSQueue = async () => {
-        if (!ttsQueueRef.current) {
-            console.error('[TTS] Queue not initialized');
-            return;
-        }
-
-        // Use TTSQueue's drain method with our safeSpeak function, passing current turn ID
-        await ttsQueueRef.current.drain(async (text: string, mood: string, lang: string, priority: 'IMMEDIATE' | 'NORMAL') => {
-            // Check state - Interrupts are handled by TTSQueue returning early, 
-            // but we can also check here if we want to be double sure.
-            if (conversationStateRef.current === 'INTERRUPTED') {
-                return;
-            }
-            await safeSpeak(text, mood, priority);
-        }, currentTurnIdRef.current);
-    };
-
-
-
-    const escapeXml = (unsafe: string): string => {
-        return unsafe.replace(/[<>&'"]/g, (c) => {
-            switch (c) {
-                case '<': return '&lt;';
-                case '>': return '&gt;';
-                case '&': return '&amp;';
-                case '\'': return '&apos;';
-                case '"': return '&quot;';
-                default: return c;
-            }
-        });
-    };
-
     // ---------------- TEXT TO SPEECH (WITH MUTEX) ----------------
-    // 🔥 FIX 1: Hard TTS Mutex wrapper
-    const safeSpeak = async (text: string, mood: string = 'neutral', priority: 'NORMAL' | 'IMMEDIATE'): Promise<void> => {
-        // [FIX] Auto-recover state: If we are IDLE but receive an IMMEDIATE barge-in 
-        // or a queued response, force state to SPEAKING to prevent the block.
-        // We check queue length via the ref if possible, or just trust priority.
-        const hasQueueItems = ttsQueueRef.current ? !ttsQueueRef.current.isEmpty() : false;
-
-        if (conversationStateRef.current === 'IDLE' && (priority === 'IMMEDIATE' || hasQueueItems)) {
-            console.warn(`[State Recovery] IDLE → SPEAKING (Triggered by ${priority} TTS)`);
-            transitionState('SPEAKING', 'Auto-recovery for TTS');
-            // Give state a small tick to propagate if needed (though transitionState updates ref immediately)
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
-
-        if (ttsInProgressRef.current) {
-            console.warn('[TTS] Skipped (already speaking)');
-            return;
-        }
-
-        if (conversationStateRef.current !== 'THINKING' && conversationStateRef.current !== 'SPEAKING') {
-            console.warn(`[TTS] Blocked — invalid state: ${conversationStateRef.current}`);
-            return;
-        }
-
-        ttsInProgressRef.current = true;
-
-        try {
-            await speak(text, mood);
-        } finally {
-            ttsInProgressRef.current = false;
-        }
-    };
-
-    // ✅ FIXED: DYNAMIC MIXED-LANG SSML
-    const buildSSML = (text: string, mood: string) => {
-        const voice = FIXED_TTS_VOICE; // 'hi-IN-SwaraNeural' is multilingual-capable
-
-        // DYNAMICALY DETECT OUTPUT SCRIPT TO SET xml:lang
-        // This is crucial for Swara to pronounce "Hinglish" correctly versus "English".
-        // Swara in 'hi-IN' mode handles Romanized Hindi (Hinglish) much better than 'en-IN' mode.
-        // Therefore, if we detect significant Roman text but the intent is likely Hindi/Hinglish (lang='hi-IN'),
-        // we keep xml:lang='hi-IN'. 
-
-        // However, we are now STRICTLY English.
-        const targetXmlLang = 'en-IN';
-
-        // Map internal emotion state to prosody (Humanized ranges)
-        const emotion = emotionStateRef.current;
-
-        // Pitch: Subtle variations (+/- 5%) are more natural than fixed Hz shifts
-        // Valence -1 (sad) -> -5%, Valence +1 (happy) -> +5%
-        const pitchDelta = Math.round(emotion.valence * 5);
-        const basePitch = `${pitchDelta >= 0 ? '+' : ''}${pitchDelta}%`;
-
-        // Rate: 0.9 (slow/sad) to 1.15 (fast/excited). Default ~1.0
-        // Arousal 0 -> 0.9, Arousal 1 -> 1.15
-        const baseRate = 0.9 + (emotion.arousal * 0.25);
-
-        // Escape XML chars
-        const safeText = escapeXml(text);
-
-        return `
-<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${targetXmlLang}">
-  <voice name="${voice}">
-    <prosody rate="${baseRate.toFixed(2)}" pitch="${basePitch}">
-      ${safeText}
-    </prosody>
-  </voice>
-</speak>`;
-    };
-
     const speak = async (text: string, mood: string = 'neutral') => {
         return new Promise<void>(async (resolve, reject) => {
             if (!text || !synthesizerRef.current) { resolve(); return; }
@@ -1624,6 +1348,288 @@ RULES:
             lastTTSStartTimeRef.current = Date.now();
         });
     };
+
+    // 🔥 FIX 1: Hard TTS Mutex wrapper
+    const safeSpeak = async (text: string, mood: string, priority: 'NORMAL' | 'IMMEDIATE'): Promise<void> => {
+        // [FIX] Auto-recover state: If we are IDLE but receive an IMMEDIATE barge-in 
+        // or a queued response, force state to SPEAKING to prevent the block.
+        // We check queue length via the ref if possible, or just trust priority.
+        const hasQueueItems = ttsQueueRef.current ? !ttsQueueRef.current.isEmpty() : false;
+
+        if (conversationStateRef.current === 'IDLE' && (priority === 'IMMEDIATE' || hasQueueItems)) {
+            console.warn(`[State Recovery] IDLE → SPEAKING (Triggered by ${priority} TTS)`);
+            transitionState('SPEAKING', 'Auto-recovery for TTS');
+            // Give state a small tick to propagate if needed (though transitionState updates ref immediately)
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        if (ttsInProgressRef.current) {
+            console.warn('[TTS] Skipped (already speaking)');
+            return;
+        }
+
+        if (conversationStateRef.current !== 'THINKING' && conversationStateRef.current !== 'SPEAKING') {
+            console.warn(`[TTS] Blocked — invalid state: ${conversationStateRef.current}`);
+            return;
+        }
+
+        ttsInProgressRef.current = true;
+
+        try {
+            await speak(text, mood);
+        } finally {
+            ttsInProgressRef.current = false;
+        }
+    };
+
+    // ---------------- PHRASE QUEUE (BATCHING) ----------------
+    const queueSpeech = (text: string, mood: string, turnId: number, priority: 'IMMEDIATE' | 'NORMAL' = 'NORMAL') => {
+        if (ttsQueueRef.current) {
+            ttsQueueRef.current.enqueue(text, mood, 'en-IN', turnId, priority);
+        } else {
+            console.error('[TTS] Queue not initialized');
+        }
+    };
+
+    // 🔥 REFACTORED: Drain phrase queue using TTSQueue class
+    const drainTTSQueue = async () => {
+        if (!ttsQueueRef.current) {
+            console.error('[TTS] Queue not initialized');
+            return;
+        }
+
+        // Use TTSQueue's drain method with our safeSpeak function, passing current turn ID
+        await ttsQueueRef.current.drain(async (text: string, mood: string, lang: string, priority: 'IMMEDIATE' | 'NORMAL') => {
+            // Check state - Interrupts are handled by TTSQueue returning early, 
+            // but we can also check here if we want to be double sure.
+            if (conversationStateRef.current === 'INTERRUPTED') {
+                return;
+            }
+            await safeSpeak(text, mood, priority);
+        }, currentTurnIdRef.current);
+    };
+
+
+    // ---------------- LLM PROCESSING (STRICT TURN LANGUAGE) ----------------
+    const processResponse = async (userText: string, audioCtx?: UserAudioContext, isBargeIn: boolean = false) => {
+        // 🆕 CONCURRENT LLM GUARD
+        if (isProcessingLLMRef.current) {
+            console.log(`[LLM] Skipping concurrent processing: "${userText}"`);
+            return;
+        }
+        isProcessingLLMRef.current = true;
+
+        let fillerTimeout: NodeJS.Timeout | null = null;
+        // Capture turn ID early so it's available in catch/finally and represents the turn that started this process
+        const myTurnId = currentTurnIdRef.current;
+
+        try {
+            // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
+            // We now rely on the conversation history and LLM awareness for names.
+            // Specific 'fact extraction' calls can be reintroduced as a dedicated NLP step if needed.
+            /* 
+            const nameFact = extractNameFact(userText);
+            if (nameFact && sessionIdRef.current) {
+                // ... (code removed)
+            }
+            */
+
+            // 2️⃣ RETRIEVE SESSION FACTS
+            let factMemory = "";
+            if (sessionIdRef.current) {
+                try {
+                    const fRes = await fetch(`/api/facts?sessionId=${sessionIdRef.current}`);
+                    if (fRes.ok) {
+                        const facts = await fRes.json();
+                        if (Object.keys(facts).length > 0) {
+                            factMemory = Object.entries(facts)
+                                .map(([k, v]) => `${k.replace("_", " ")}: ${v}`)
+                                .join("\n");
+                            console.log(`[Memory] Loaded Facts:\n${factMemory}`);
+                        }
+                    }
+                } catch (e) { console.warn('Fact fetch error:', e); }
+            }
+
+            // 3️⃣ RETRIEVE CONTEXT (Async)
+            let retrievedContext = '';
+            if (sessionIdRef.current && !isBargeIn) {
+                try {
+                    const ctxTime = Date.now();
+                    const ctxRes = await fetch('/api/context', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: sessionIdRef.current, text: userText })
+                    });
+                    if (ctxRes.ok) {
+                        const ctxData = await ctxRes.json();
+                        retrievedContext = ctxData.context || '';
+                    }
+                } catch (e) { console.warn('Context error:', e); }
+            }
+
+            // Initialize HfInference...
+            if (!hf) {
+                const token = localStorage.getItem('hf_token') || HF_TOKEN;
+                if (!token) {
+                    console.error("Hugging Face token missing.");
+                    return;
+                }
+                hf = new HfInference(token);
+            }
+
+            // 🆔 CAPTURE CURRENT TURN ID (Already captured at top scope)
+            // const myTurnId = currentTurnIdRef.current;
+
+            // Construct conversation history
+            const history = messages.slice(-20);
+
+            // Enrich user message
+            let enrichedUserText = userText;
+            if (audioCtx) {
+                const emotionPrefix = `[User audio: ${audioCtx.emotion}, ${audioCtx.energy} energy, speaking ${audioCtx.speed > 3 ? 'fast' : audioCtx.speed < 2 ? 'slowly' : 'normally'}] `;
+                enrichedUserText = emotionPrefix + userText;
+            }
+
+
+
+            // 5️⃣ CONSTRUCT PROMPT WITH FACTS
+            const factInjection = factMemory ? `\nKnown user facts:\n${factMemory}\n` : '';
+            const combinedContext = `${factInjection}${retrievedContext}`;
+
+            const conversation: Message[] = [
+                { role: 'system', content: getSystemPrompt(combinedContext) },
+                ...history,
+                { role: 'user', content: enrichedUserText }
+            ];
+
+            console.log(`[FINAL-MEMORY]`, { facts: factMemory || "None" });
+
+            let fullBuffer = '';
+            let tokenBuffer = '';
+            let tokenCount = 0;
+            let detectedMood = 'neutral';
+            let emotionLocked = false;
+            const priority = isBargeIn ? 'IMMEDIATE' : 'NORMAL';
+
+            // Track LLM timing
+            llmRequestTimeRef.current = Date.now();
+            hasFirstChunkRef.current = false;
+            // let fillerTimeout: NodeJS.Timeout | null = null; // Hoisted
+
+            const stream = hf.chatCompletionStream({
+                model: 'meta-llama/Llama-3.3-70B-Instruct',
+                messages: conversation as any,
+                max_tokens: 150,
+                temperature: 0.7,
+            });
+
+            // Filler logic (Disable for barge-in to be snappy)
+            if (!isBargeIn) {
+                fillerTimeout = setTimeout(() => {
+                    const timeSinceLastFiller = Date.now() - lastFillerTimeRef.current;
+                    if (timeSinceLastFiller < 4000) return;
+
+                    if (!hasFirstChunkRef.current && conversationStateRef.current === 'THINKING') {
+                        if (Math.random() > 0.35) return;
+
+                        // Check if still valid state
+                        if (currentTurnIdRef.current !== myTurnId) return;
+
+                        console.log('[Filler] Injecting');
+                        const filler = getContextualFiller();
+                        if (filler) {
+                            queueSpeech(filler, 'neutral', myTurnId, 'NORMAL');
+                            lastFillerTimeRef.current = Date.now();
+                        }
+                    }
+                }, 1200);
+            }
+
+            for await (const chunk of stream) {
+                if (currentTurnIdRef.current !== myTurnId) {
+                    console.log(`[LLM] Cancelled stale response (Turn ID ${myTurnId})`);
+                    break;
+                }
+
+                const content = chunk.choices[0]?.delta?.content || "";
+
+                if (!hasFirstChunkRef.current) {
+                    hasFirstChunkRef.current = true;
+                    if (fillerTimeout) clearTimeout(fillerTimeout);
+                    console.log(`[LLM] First token: ${Date.now() - llmRequestTimeRef.current}ms`);
+                }
+
+                fullBuffer += content;
+                tokenBuffer += content;
+
+                if (!emotionLocked && fullBuffer.length < 50 && fullBuffer.includes('[')) {
+                    const match = fullBuffer.match(/^\[(.*?)\]/);
+                    if (match) {
+                        detectedMood = match[1].toLowerCase();
+                        tokenBuffer = tokenBuffer.replace(/^\[(.*?)\]/, '').trim();
+                        updateEmotionFromMood(detectedMood);
+                        emotionLocked = true;
+                    }
+                }
+
+                tokenBuffer = tokenBuffer.replace(/\[.*?\]/g, '');
+                const hasCompleteSentence = isSentenceComplete(tokenBuffer);
+                const bufferTooLarge = tokenBuffer.length > 500;
+
+                if ((hasCompleteSentence || bufferTooLarge) && tokenBuffer.trim().length > 0) {
+                    const toSpeak = tokenBuffer.trim();
+                    console.log(`[Sentence] Queueing (${priority}): "${toSpeak.substring(0, 50)}..."`);
+                    queueSpeech(toSpeak, detectedMood, myTurnId, priority);
+                    tokenBuffer = "";
+                }
+            }
+
+            if (tokenBuffer.trim()) {
+                if (currentTurnIdRef.current === myTurnId) {
+                    queueSpeech(tokenBuffer.trim(), detectedMood, myTurnId, priority);
+                }
+            }
+
+            const cleanMessage = fullBuffer.replace(/^\[(.*?)\]/, '').trim();
+            setMessages(prev => [...prev, { role: 'assistant', content: cleanMessage, mood: detectedMood }]);
+
+            if (sessionIdRef.current) {
+                fetch('/api/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: sessionIdRef.current,
+                        role: 'assistant',
+                        content: cleanMessage,
+                        mood: detectedMood
+                    })
+                }).catch(e => console.warn('Save error:', e));
+
+                // 🧠 EXTRACT FACTS FROM THIS TURN (Background, Non-blocking)
+                // This enables memory: "My name is X" -> stores user_name: X
+                if (!isBargeIn) {
+                    extractFactsInBackground(sessionIdRef.current, userText, cleanMessage);
+                }
+            }
+
+            await drainTTSQueue();
+
+        } catch (e) {
+            console.error("LLM Error:", e);
+            if (fillerTimeout) clearTimeout(fillerTimeout);
+
+            // Only reset to IDLE if we are not already in another valid state or if this was the active turn
+            if (currentTurnIdRef.current === myTurnId) {
+                transitionState('IDLE', 'Error occurred');
+            }
+        } finally {
+            // 🆕 RESET LLM PROCESSING GUARD
+            isProcessingLLMRef.current = false;
+        }
+    };
+
+
 
     const [isMuted, setIsMuted] = useState(false);
 
