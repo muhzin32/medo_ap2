@@ -1261,198 +1261,197 @@ RULES:
         isProcessingLLMRef.current = true;
 
         try {
-
-        // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
-        // We now rely on the conversation history and LLM awareness for names.
-        // Specific 'fact extraction' calls can be reintroduced as a dedicated NLP step if needed.
-        /* 
-        const nameFact = extractNameFact(userText);
-        if (nameFact && sessionIdRef.current) {
-            // ... (code removed)
-        }
-        */
+            // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
+            // We now rely on the conversation history and LLM awareness for names.
+            // Specific 'fact extraction' calls can be reintroduced as a dedicated NLP step if needed.
+            /* 
+            const nameFact = extractNameFact(userText);
+            if (nameFact && sessionIdRef.current) {
+                // ... (code removed)
+            }
+            */
 
         // 2️⃣ RETRIEVE SESSION FACTS
-        let factMemory = "";
-        if (sessionIdRef.current) {
-            try {
-                const fRes = await fetch(`/api/facts?sessionId=${sessionIdRef.current}`);
-                if (fRes.ok) {
-                    const facts = await fRes.json();
-                    if (Object.keys(facts).length > 0) {
-                        factMemory = Object.entries(facts)
-                            .map(([k, v]) => `${k.replace("_", " ")}: ${v}`)
-                            .join("\n");
-                        console.log(`[Memory] Loaded Facts:\n${factMemory}`);
+            let factMemory = "";
+            if (sessionIdRef.current) {
+                try {
+                    const fRes = await fetch(`/api/facts?sessionId=${sessionIdRef.current}`);
+                    if (fRes.ok) {
+                        const facts = await fRes.json();
+                        if (Object.keys(facts).length > 0) {
+                            factMemory = Object.entries(facts)
+                                .map(([k, v]) => `${k.replace("_", " ")}: ${v}`)
+                                .join("\n");
+                            console.log(`[Memory] Loaded Facts:\n${factMemory}`);
                     }
                 }
             } catch (e) { console.warn('Fact fetch error:', e); }
         }
 
         // 3️⃣ RETRIEVE CONTEXT (Async)
-        let retrievedContext = '';
-        if (sessionIdRef.current && !isBargeIn) {
-            try {
-                const ctxTime = Date.now();
-                const ctxRes = await fetch('/api/context', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: sessionIdRef.current, text: userText })
-                });
-                if (ctxRes.ok) {
-                    const ctxData = await ctxRes.json();
-                    retrievedContext = ctxData.context || '';
-                }
-            } catch (e) { console.warn('Context error:', e); }
+            let retrievedContext = '';
+            if (sessionIdRef.current && !isBargeIn) {
+                try {
+                    const ctxTime = Date.now();
+                    const ctxRes = await fetch('/api/context', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: sessionIdRef.current, text: userText })
+                    });
+                    if (ctxRes.ok) {
+                        const ctxData = await ctxRes.json();
+                        retrievedContext = ctxData.context || '';
+                    }
+                } catch (e) { console.warn('Context error:', e); }
         }
 
         // Initialize HfInference...
-        if (!hf) {
-            const token = localStorage.getItem('hf_token') || HF_TOKEN;
-            if (!token) {
-                console.error("Hugging Face token missing.");
-                return;
-            }
-            hf = new HfInference(token);
+            if (!hf) {
+                const token = localStorage.getItem('hf_token') || HF_TOKEN;
+                if (!token) {
+                    console.error("Hugging Face token missing.");
+                    return;
+                }
+                hf = new HfInference(token);
         }
 
         // 🆔 CAPTURE CURRENT TURN ID
-        const myTurnId = currentTurnIdRef.current;
+            const myTurnId = currentTurnIdRef.current;
 
-        // Construct conversation history
-        const history = messages.slice(-20);
+            // Construct conversation history
+            const history = messages.slice(-20);
 
-        // Enrich user message
-        let enrichedUserText = userText;
+            // Enrich user message
+            let enrichedUserText = userText;
         if (audioCtx) {
-            const emotionPrefix = `[User audio: ${audioCtx.emotion}, ${audioCtx.energy} energy, speaking ${audioCtx.speed > 3 ? 'fast' : audioCtx.speed < 2 ? 'slowly' : 'normally'}] `;
-            enrichedUserText = emotionPrefix + userText;
-        }
+                const emotionPrefix = `[User audio: ${audioCtx.emotion}, ${audioCtx.energy} energy, speaking ${audioCtx.speed > 3 ? 'fast' : audioCtx.speed < 2 ? 'slowly' : 'normally'}] `;
+                enrichedUserText = emotionPrefix + userText;
+            }
 
 
 
-        // 5️⃣ CONSTRUCT PROMPT WITH FACTS
-        const factInjection = factMemory ? `\nKnown user facts:\n${factMemory}\n` : '';
-        const combinedContext = `${factInjection}${retrievedContext}`;
+            // 5️⃣ CONSTRUCT PROMPT WITH FACTS
+            const factInjection = factMemory ? `\nKnown user facts:\n${factMemory}\n` : '';
+            const combinedContext = `${factInjection}${retrievedContext}`;
 
         const conversation: Message[] = [
-            { role: 'system', content: getSystemPrompt(combinedContext) },
-            ...history,
-            { role: 'user', content: enrichedUserText }
-        ];
+                { role: 'system', content: getSystemPrompt(combinedContext) },
+                ...history,
+                { role: 'user', content: enrichedUserText }
+            ];
 
-        console.log(`[FINAL-MEMORY]`, { facts: factMemory || "None" });
+            console.log(`[FINAL-MEMORY]`, { facts: factMemory || "None" });
 
-        let fullBuffer = '';
+            let fullBuffer = '';
         let tokenBuffer = '';
-        let tokenCount = 0;
-        let detectedMood = 'neutral';
-        let emotionLocked = false;
-        const priority = isBargeIn ? 'IMMEDIATE' : 'NORMAL';
+            let tokenCount = 0;
+            let detectedMood = 'neutral';
+            let emotionLocked = false;
+            const priority = isBargeIn ? 'IMMEDIATE' : 'NORMAL';
 
-        // Track LLM timing
-        llmRequestTimeRef.current = Date.now();
-        hasFirstChunkRef.current = false;
-        let fillerTimeout: NodeJS.Timeout | null = null;
+            // Track LLM timing
+            llmRequestTimeRef.current = Date.now();
+            hasFirstChunkRef.current = false;
+            let fillerTimeout: NodeJS.Timeout | null = null;
 
         try {
-            const stream = hf.chatCompletionStream({
-                model: 'meta-llama/Llama-3.3-70B-Instruct',
-                messages: conversation as any,
-                max_tokens: 150,
-                temperature: 0.7,
-            });
+                const stream = hf.chatCompletionStream({
+                    model: 'meta-llama/Llama-3.3-70B-Instruct',
+                    messages: conversation as any,
+                    max_tokens: 150,
+                    temperature: 0.7,
+                });
 
-            // Filler logic (Disable for barge-in to be snappy)
-            if (!isBargeIn) {
-                fillerTimeout = setTimeout(() => {
-                    const timeSinceLastFiller = Date.now() - lastFillerTimeRef.current;
-                    if (timeSinceLastFiller < 4000) return;
+                // Filler logic (Disable for barge-in to be snappy)
+                if (!isBargeIn) {
+                    fillerTimeout = setTimeout(() => {
+                        const timeSinceLastFiller = Date.now() - lastFillerTimeRef.current;
+                        if (timeSinceLastFiller < 4000) return;
 
-                    if (!hasFirstChunkRef.current && conversationStateRef.current === 'THINKING') {
-                        if (Math.random() > 0.35) return;
+                        if (!hasFirstChunkRef.current && conversationStateRef.current === 'THINKING') {
+                            if (Math.random() > 0.35) return;
 
-                        // Check if still valid state
-                        if (currentTurnIdRef.current !== myTurnId) return;
+                            // Check if still valid state
+                            if (currentTurnIdRef.current !== myTurnId) return;
 
                         console.log('[Filler] Injecting');
-                        const filler = getContextualFiller();
-                        if (filler) {
-                            queueSpeech(filler, 'neutral', myTurnId, 'NORMAL');
-                            lastFillerTimeRef.current = Date.now();
+                            const filler = getContextualFiller();
+                            if (filler) {
+                                queueSpeech(filler, 'neutral', myTurnId, 'NORMAL');
+                                lastFillerTimeRef.current = Date.now();
+                            }
                         }
-                    }
-                }, 1200);
-            }
+                    }, 1200);
+                }
 
             for await (const chunk of stream) {
-                if (currentTurnIdRef.current !== myTurnId) {
-                    console.log(`[LLM] Cancelled stale response (Turn ID ${myTurnId})`);
-                    break;
-                }
+                    if (currentTurnIdRef.current !== myTurnId) {
+                        console.log(`[LLM] Cancelled stale response (Turn ID ${myTurnId})`);
+                        break;
+                    }
 
-                const content = chunk.choices[0]?.delta?.content || "";
+                    const content = chunk.choices[0]?.delta?.content || "";
 
-                if (!hasFirstChunkRef.current) {
-                    hasFirstChunkRef.current = true;
-                    if (fillerTimeout) clearTimeout(fillerTimeout);
-                    console.log(`[LLM] First token: ${Date.now() - llmRequestTimeRef.current}ms`);
-                }
+                    if (!hasFirstChunkRef.current) {
+                        hasFirstChunkRef.current = true;
+                        if (fillerTimeout) clearTimeout(fillerTimeout);
+                        console.log(`[LLM] First token: ${Date.now() - llmRequestTimeRef.current}ms`);
+                    }
 
-                fullBuffer += content;
-                tokenBuffer += content;
+                    fullBuffer += content;
+                    tokenBuffer += content;
 
-                if (!emotionLocked && fullBuffer.length < 50 && fullBuffer.includes('[')) {
-                    const match = fullBuffer.match(/^\[(.*?)\]/);
+                    if (!emotionLocked && fullBuffer.length < 50 && fullBuffer.includes('[')) {
+                        const match = fullBuffer.match(/^\[(.*?)\]/);
                     if (match) {
-                        detectedMood = match[1].toLowerCase();
-                        tokenBuffer = tokenBuffer.replace(/^\[(.*?)\]/, '').trim();
-                        updateEmotionFromMood(detectedMood);
-                        emotionLocked = true;
+                            detectedMood = match[1].toLowerCase();
+                            tokenBuffer = tokenBuffer.replace(/^\[(.*?)\]/, '').trim();
+                            updateEmotionFromMood(detectedMood);
+                            emotionLocked = true;
+                        }
+                    }
+
+                    tokenBuffer = tokenBuffer.replace(/\[.*?\]/g, '');
+                    const hasCompleteSentence = isSentenceComplete(tokenBuffer);
+                const bufferTooLarge = tokenBuffer.length > 500;
+
+                    if ((hasCompleteSentence || bufferTooLarge) && tokenBuffer.trim().length > 0) {
+                        const toSpeak = tokenBuffer.trim();
+                        console.log(`[Sentence] Queueing (${priority}): "${toSpeak.substring(0, 50)}..."`);
+                        queueSpeech(toSpeak, detectedMood, myTurnId, priority);
+                        tokenBuffer = "";
                     }
                 }
 
-                tokenBuffer = tokenBuffer.replace(/\[.*?\]/g, '');
-                const hasCompleteSentence = isSentenceComplete(tokenBuffer);
-                const bufferTooLarge = tokenBuffer.length > 500;
-
-                if ((hasCompleteSentence || bufferTooLarge) && tokenBuffer.trim().length > 0) {
-                    const toSpeak = tokenBuffer.trim();
-                    console.log(`[Sentence] Queueing (${priority}): "${toSpeak.substring(0, 50)}..."`);
-                    queueSpeech(toSpeak, detectedMood, myTurnId, priority);
-                    tokenBuffer = "";
-                }
-            }
-
             if (tokenBuffer.trim()) {
-                if (currentTurnIdRef.current === myTurnId) {
-                    queueSpeech(tokenBuffer.trim(), detectedMood, myTurnId, priority);
+                    if (currentTurnIdRef.current === myTurnId) {
+                        queueSpeech(tokenBuffer.trim(), detectedMood, myTurnId, priority);
+                    }
                 }
-            }
 
-            const cleanMessage = fullBuffer.replace(/^\[(.*?)\]/, '').trim();
-            setMessages(prev => [...prev, { role: 'assistant', content: cleanMessage, mood: detectedMood }]);
+                const cleanMessage = fullBuffer.replace(/^\[(.*?)\]/, '').trim();
+                setMessages(prev => [...prev, { role: 'assistant', content: cleanMessage, mood: detectedMood }]);
 
             if (sessionIdRef.current) {
-                fetch('/api/message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sessionId: sessionIdRef.current,
-                        role: 'assistant',
-                        content: cleanMessage,
-                        mood: detectedMood
+                    fetch('/api/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sessionId: sessionIdRef.current,
+                            role: 'assistant',
+                            content: cleanMessage,
+                            mood: detectedMood
                     })
-                }).catch(e => console.warn('Save error:', e));
+                    }).catch(e => console.warn('Save error:', e));
 
-                // 🧠 EXTRACT FACTS FROM THIS TURN (Background, Non-blocking)
-                // This enables memory: "My name is X" -> stores user_name: X
-                if (!isBargeIn) {
-                    extractFactsInBackground(sessionIdRef.current, userText, cleanMessage);
+                    // 🧠 EXTRACT FACTS FROM THIS TURN (Background, Non-blocking)
+                    // This enables memory: "My name is X" -> stores user_name: X
+                    if (!isBargeIn) {
+                        extractFactsInBackground(sessionIdRef.current, userText, cleanMessage);
+                    }
                 }
-            }
 
-            await drainTTSQueue();
+                await drainTTSQueue();
 
         } catch (e) {
             console.error("LLM Error:", e);
