@@ -143,7 +143,7 @@ export const useLlamaVoice = () => {
     const currentTurnIdRef = useRef<number>(0); // Generation ID for cancellation
     const lastTTSStartTimeRef = useRef<number>(0); // Debounce for echo cancellation
     const activeListeningTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 🆕 Post-TTS Timeout
-    const POST_TTS_WINDOW_MS = 4000; // 4 Seconds active listening
+    const POST_TTS_WINDOW_MS = 12000; // 12 Seconds active listening
 
     // 📊 SOTA LID REFS - Removed, kept empty refs if needed or remove entirely
     // const lidBufferRef = useRef<LIDResult[]>([]); // Removed
