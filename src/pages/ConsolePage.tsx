@@ -5,7 +5,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useLlamaVoice } from '../hooks/useLlamaVoice';
 import { WaveOrb } from '../components/WaveOrb';
 import { Button } from '../components/button/Button';
-import { Settings, Mic, MicOff } from 'react-feather';
+
+import { Mic, MicOff } from 'react-feather';
+import appLogo from '../assets/logo.png';
 import './ConsolePage.scss';
 
 export function ConsolePage() {
@@ -77,91 +79,87 @@ export function ConsolePage() {
     <div data-component="ConsolePage" className="llama-console">
       <div className="content-top">
         <div className="content-title">
-          <span className="title-text">Llama 3.3 Voice</span>
+          <span className="title-text">MEDDOLLINA</span>
           <span className="status-badge" data-status={state}>
             {isMuted ? 'MUTED' : state.toUpperCase()}
           </span>
         </div>
         <div className="content-controls">
+          <img src={appLogo} alt="MEDDOLLINA" className="header-logo" style={{ height: '50px', objectFit: 'contain' }} />
+        </div>
+
+        <div className="content-main">
+          {/* CENTER VISUALIZATION */}
+          <div className="orb-container">
+            <WaveOrb state={isMuted ? 'idle' : state} amplitude={isMuted ? 0 : volume} />
+          </div>
+
+          {/* CHAT LOG (Transcription) */}
+          <div className="chat-container">
+            <div className="chat-log" ref={eventsScrollRef}>
+              {messages.length === 0 && <div className="empty-state">Start speaking to begin conversation...</div>}
+              {messages.map((msg, i) => (
+                <div key={i} className={`chat-message ${msg.role}`}>
+                  <div className="message-header">
+                    {msg.role === 'user' ? 'You' : 'Llama'}
+                    {msg.mood && <span className="mood-tag">{msg.mood}</span>}
+                  </div>
+                  <div className="message-content">{msg.content}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* CONFIG MODAL / OVERLAY */}
+        {showConfig && (
+          <div className="config-overlay">
+            <div className="config-card">
+              <h3>Setup</h3>
+              <div className="input-group">
+                <label>Azure Speech Key</label>
+                <input type="password" value={azureKey} onChange={e => setAzureKey(e.target.value)} placeholder="Key 1 from Azure Portal" />
+              </div>
+              <div className="input-group">
+                <label>Azure Region</label>
+                <input type="text" value={azureRegion} onChange={e => setAzureRegion(e.target.value)} placeholder="e.g. eastus" />
+              </div>
+              <div className="input-group">
+                <label>Hugging Face Token</label>
+                <input type="password" value={hfToken} onChange={e => setHfToken(e.target.value)} placeholder="hf_..." />
+              </div>
+              <div className="config-actions">
+                <Button label="Save & Close" onClick={() => {
+                  // Save to localStorage for persistence
+                  localStorage.setItem('azure_speech_key', azureKey);
+                  localStorage.setItem('azure_speech_region', azureRegion);
+                  localStorage.setItem('hf_token', hfToken);
+                  // Re-init with new keys (HF token is passed separately via localStorage)
+                  initialize(azureKey, azureRegion, hfToken);
+                  setShowConfig(false);
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="content-actions">
+          {/* MUTE TOGGLE BUTTON */}
           <Button
-            icon={Settings}
-            buttonStyle="flush"
-            onClick={() => setShowConfig(!showConfig)}
+            label={isMuted ? 'Unmute' : 'Mute'}
+            iconPosition="start"
+            icon={isMuted ? MicOff : Mic}
+            buttonStyle={isMuted ? 'alert' : 'action'} // Alert style for Muted? Or Action for Active?
+            // Let's say: Action (Blue) = Active/Normal. Alert (Red) = Muted. 
+            // Or usually: Red = Recording... 
+            // Let's stick to: "action" (Blue) when Muted (to encourage unmute), "regular" or "alert" when Active?
+            // Actually user asked for Mute button.
+            // State: Active -> Button says "Mute" -> Style: Regular
+            // State: Muted -> Button says "Unmute" -> Style: Action (highlighted)
+            onClick={handleMuteToggle}
+            className={isMuted ? 'muted-btn' : 'active-btn'}
           />
         </div>
-      </div>
-
-      <div className="content-main">
-        {/* CENTER VISUALIZATION */}
-        <div className="orb-container">
-          <WaveOrb state={isMuted ? 'idle' : state} amplitude={isMuted ? 0 : volume} />
-        </div>
-
-        {/* CHAT LOG (Transcription) */}
-        <div className="chat-container">
-          <div className="chat-log" ref={eventsScrollRef}>
-            {messages.length === 0 && <div className="empty-state">Start speaking to begin conversation...</div>}
-            {messages.map((msg, i) => (
-              <div key={i} className={`chat-message ${msg.role}`}>
-                <div className="message-header">
-                  {msg.role === 'user' ? 'You' : 'Llama'}
-                  {msg.mood && <span className="mood-tag">{msg.mood}</span>}
-                </div>
-                <div className="message-content">{msg.content}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* CONFIG MODAL / OVERLAY */}
-      {showConfig && (
-        <div className="config-overlay">
-          <div className="config-card">
-            <h3>Setup</h3>
-            <div className="input-group">
-              <label>Azure Speech Key</label>
-              <input type="password" value={azureKey} onChange={e => setAzureKey(e.target.value)} placeholder="Key 1 from Azure Portal" />
-            </div>
-            <div className="input-group">
-              <label>Azure Region</label>
-              <input type="text" value={azureRegion} onChange={e => setAzureRegion(e.target.value)} placeholder="e.g. eastus" />
-            </div>
-            <div className="input-group">
-              <label>Hugging Face Token</label>
-              <input type="password" value={hfToken} onChange={e => setHfToken(e.target.value)} placeholder="hf_..." />
-            </div>
-            <div className="config-actions">
-              <Button label="Save & Close" onClick={() => {
-                // Save to localStorage for persistence
-                localStorage.setItem('azure_speech_key', azureKey);
-                localStorage.setItem('azure_speech_region', azureRegion);
-                localStorage.setItem('hf_token', hfToken);
-                // Re-init with new keys (HF token is passed separately via localStorage)
-                initialize(azureKey, azureRegion, hfToken);
-                setShowConfig(false);
-              }} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="content-actions">
-        {/* MUTE TOGGLE BUTTON */}
-        <Button
-          label={isMuted ? 'Unmute' : 'Mute'}
-          iconPosition="start"
-          icon={isMuted ? MicOff : Mic}
-          buttonStyle={isMuted ? 'alert' : 'action'} // Alert style for Muted? Or Action for Active?
-          // Let's say: Action (Blue) = Active/Normal. Alert (Red) = Muted. 
-          // Or usually: Red = Recording... 
-          // Let's stick to: "action" (Blue) when Muted (to encourage unmute), "regular" or "alert" when Active?
-          // Actually user asked for Mute button.
-          // State: Active -> Button says "Mute" -> Style: Regular
-          // State: Muted -> Button says "Unmute" -> Style: Action (highlighted)
-          onClick={handleMuteToggle}
-          className={isMuted ? 'muted-btn' : 'active-btn'}
-        />
       </div>
     </div>
   );
