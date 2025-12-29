@@ -50,7 +50,7 @@ const FIXED_TTS_VOICE = "en-IN-NeerjaNeural"; // Changed to English Voice
 
 // 🔊 CONVERSATION TRIGGERS (Strict Regex with Anchors & Boundaries)
 // Wake: Start of speech only
-const WAKE_TRS = /^(hey|hello|hi|listen|are you there|ok|then|yes)\b/i;
+const WAKE_TRS = /^(hey|hello|hi|listen|are you there|ok|okay|o\.k\.|meddollina|medolina|twinmind|yes)\b/i;
 // Interrupt: Start of speech or standalone command
 const INTERRUPT_TRS = /^(wait|hold on|stop|no no|listen|one second)\b/i;
 // Exit: Specific phrases
@@ -960,6 +960,7 @@ RULES:
                                 return;
                             } else {
                                 // ⚡ FIX 2: LOG AS NOISE IN IDLE
+                                console.log(`[Wake] Ignored (Regex mismatch): "${text}"`);
                                 logTranscriptInBackground(sessionIdRef.current, text, undefined, 'noise');
                                 return;
                             }
