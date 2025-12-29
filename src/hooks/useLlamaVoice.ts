@@ -809,6 +809,10 @@ RULES:
             speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "1500");
             // Note: Removed InitialSilenceTimeoutMs - SDK defaults work better
 
+            // 🚀 OPTIMIZATION: Compression
+            // Use MP3/Opus compression instead of raw PCM to reduce bandwidth
+            speechConfig.setProperty("SpeechServiceConnection_enableAudioCompression", "true");
+
             speechConfig.outputFormat = SpeechSDK.OutputFormat.Simple;
 
             const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
