@@ -144,6 +144,8 @@ export const useLlamaVoice = () => {
     const lastTTSStartTimeRef = useRef<number>(0); // Debounce for echo cancellation
     const activeListeningTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 🆕 Post-TTS Timeout
     const POST_TTS_WINDOW_MS = 12000; // 12 Seconds active listening
+    const isProcessingRecognitionRef = useRef<boolean>(false); // 🆕 Prevent concurrent recognition processing
+    const isProcessingLLMRef = useRef<boolean>(false); // 🆕 Prevent concurrent LLM processing
 
     // 📊 SOTA LID REFS - Removed, kept empty refs if needed or remove entirely
     // const lidBufferRef = useRef<LIDResult[]>([]); // Removed
@@ -482,6 +484,10 @@ RULES:
         currentTurnIdRef.current++;
         const newTurnId = currentTurnIdRef.current;
         console.log(`[CancelTurn] ⚡ ATOM BOMB! Turn ${newTurnId - 1} obliterated. Now Turn ${newTurnId}`);
+
+        // 🆕 FORCE RESET PROCESSING GUARD
+        isProcessingRecognitionRef.current = false;
+        isProcessingLLMRef.current = false;
 
         // 2. INSTANT SYNTHESIZER SHUTDOWN (bypassing stopSpeakingAsync lag)
         if (synthesizerRef.current) {
@@ -918,6 +924,15 @@ RULES:
                     let text = originalText;
                     if (!text) return;
 
+                    // 🆕 CONCURRENT PROCESSING GUARD
+                    if (isProcessingRecognitionRef.current) {
+                        console.log(`[Recognition] Skipping concurrent processing: "${text}"`);
+                        return;
+                    }
+                    isProcessingRecognitionRef.current = true;
+
+                    try {
+
                     // 🛡️ FIX 4: CONFIDENCE CHECK
                     let confidence = 1.0;
                     try {
@@ -1041,6 +1056,10 @@ RULES:
                         console.warn('Language detection flow failed:', langErr);
 
                         await processResponse(text, getAudioContext(), isBargeIn);
+                    }
+                    } finally {
+                        // 🆕 RESET PROCESSING GUARD
+                        isProcessingRecognitionRef.current = false;
                     }
                 }
             };
@@ -1234,6 +1253,14 @@ RULES:
 
     // ---------------- LLM PROCESSING (STRICT TURN LANGUAGE) ----------------
     const processResponse = async (userText: string, audioCtx?: UserAudioContext, isBargeIn: boolean = false) => {
+        // 🆕 CONCURRENT LLM GUARD
+        if (isProcessingLLMRef.current) {
+            console.log(`[LLM] Skipping concurrent processing: "${userText}"`);
+            return;
+        }
+        isProcessingLLMRef.current = true;
+
+        try {
 
         // 1️⃣ NAME EXTRACTION: DEPRECATED (Regex removed)
         // We now rely on the conversation history and LLM awareness for names.
@@ -1435,6 +1462,9 @@ RULES:
             if (currentTurnIdRef.current === myTurnId) {
                 transitionState('IDLE', 'Error occurred');
             }
+        } finally {
+            // 🆕 RESET LLM PROCESSING GUARD
+            isProcessingLLMRef.current = false;
         }
     };
 
